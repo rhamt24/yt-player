@@ -8,43 +8,69 @@
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:#0b0b0f;color:#e6ebf5;font-family:Arial,Helvetica,sans-serif}
-  body{display:flex;flex-direction:column;justify-content:center;gap:14px;padding:12px}
+  body{display:flex;flex-direction:column;justify-content:center;gap:12px;padding:12px}
   .box{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:14px;overflow:hidden}
-  .box.short{aspect-ratio:9/16;max-height:78vh;width:auto;margin:0 auto}
-  iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .box.short{aspect-ratio:9/16;max-height:72vh;width:auto;margin:0 auto}
+  .box iframe,.box #player{position:absolute;inset:0;width:100%;height:100%;border:0}
+  #status{text-align:center;font-size:13px;color:#8b8fd6;min-height:18px}
+  #status.bad{color:#fb7185}
   a.btn{display:block;text-align:center;padding:12px;border-radius:99px;background:#fff;color:#111;font-weight:700;text-decoration:none}
-  #err{text-align:center;color:#fb7185;display:none}
 </style>
 </head>
 <body>
-  <div class="box" id="box"></div>
-  <p id="err">ID video tidak valid.</p>
+  <div class="box" id="box"><div id="player"></div></div>
+  <div id="status">Memuat player…</div>
   <a class="btn" id="open" href="#" style="display:none">Buka di YouTube</a>
 <script>
 (function(){
   var q = new URLSearchParams(location.search);
   var id = (q.get('v') || '').trim();
-  var isShort = q.get('s') === '1';
-  if (!/^[\w-]{11}$/.test(id)) { document.getElementById('err').style.display = 'block'; return; }
-
+  var st = document.getElementById('status');
   var box = document.getElementById('box');
-  if (isShort) box.className = 'box short';
 
-  var src = 'https://www.youtube.com/embed/' + id +
-            '?autoplay=1&playsinline=1&rel=0&modestbranding=1' +
-            '&origin=' + encodeURIComponent(location.origin);
+  function say(t, bad){ st.textContent = t; st.className = bad ? 'bad' : ''; }
 
-  var f = document.createElement('iframe');
-  f.src = src;
-  f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-  f.referrerPolicy = 'strict-origin-when-cross-origin';
-  f.allowFullscreen = true;
-  box.appendChild(f);
+  if (!/^[\w-]{11}$/.test(id)) { say('ID video tidak valid (pakai ?v=ID).', true); return; }
+  if (q.get('s') === '1') box.className = 'box short';
 
-  var a = document.getElementById('open');
-  a.href = 'https://www.youtube.com/watch?v=' + id;
-  a.style.display = 'block';
+  var open = document.getElementById('open');
+  open.href = 'https://www.youtube.com/watch?v=' + id;
+  open.style.display = 'block';
+
+  var ready = false;
+
+  var ERR = {
+    2:'Parameter video tidak valid',
+    5:'Error pemutar HTML5',
+    100:'Video tidak ditemukan / privat',
+    101:'Pemilik video melarang embed',
+    150:'Pemilik video melarang embed',
+    153:'Referer/origin tidak terkirim'
+  };
+
+  // Diagnostik: kalau API tidak termuat dalam 7 detik, webview kemungkinan memblokir YouTube
+  var timer = setTimeout(function(){
+    if (!ready) say('Player tidak termuat (webview memblokir YouTube?). Pakai tombol di bawah.', true);
+  }, 7000);
+
+  window.onYouTubeIframeAPIReady = function(){
+    new YT.Player('player', {
+      videoId: id,
+      playerVars: { autoplay: 1, playsinline: 1, rel: 0, modestbranding: 1, origin: location.origin },
+      events: {
+        onReady: function(e){ ready = true; clearTimeout(timer); say('Siap. Ketuk video jika belum otomatis jalan.'); try { e.target.playVideo(); } catch(_){} },
+        onStateChange: function(e){ if (e.data === 1) say('Memutar…'); },
+        onError: function(e){ ready = true; clearTimeout(timer); say('Error ' + e.data + ': ' + (ERR[e.data] || 'tidak diketahui'), true); }
+      }
+    });
+  };
+
+  var s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  s.onerror = function(){ clearTimeout(timer); say('Script YouTube diblokir oleh webview.', true); };
+  document.head.appendChild(s);
 })();
 </script>
 </body>
 </html>
+
